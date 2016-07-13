@@ -11,21 +11,27 @@ import scalaj.http.Http
   */
 object Fetcher {
 
+  // messages
   case class Fetch(login: String)
 
-  def props(token: Option[String], responseInterpreter: ActorRef): Props = Props(classOf[Fetcher], token, responseInterpreter)
+  case object WorkAvailabie
 
-  def props(): Props = Props(classOf[Fetcher], None)
-
+  // props factory
+  def props(token: Option[String],
+            fetcherManager: ActorRef,
+            responseInterpreter: ActorRef): Props =
+    Props(classOf[Fetcher], token, fetcherManager, responseInterpreter)
 }
 
 case class Fetcher(val token: Option[String],
+                   val fetcherManager: ActorRef,
                    val responseInterpreter: ActorRef) extends Actor with ActorLogging {
 
   import Fetcher._
 
   override def receive: Receive = {
     case Fetch(login) => fetchFollowers(login)
+    case WorkAvailabie => fetcherManager ! FetcherManger.GiveMeWork
   }
 
   private def fetchFollowers(login: String): Unit = {
@@ -43,10 +49,9 @@ case class Fetcher(val token: Option[String],
       request asString
     }
     response.onComplete { r =>
-//      log.info(s"Response from $login: $r")
-      // signal no matter success or failure
       responseInterpreter !
         ResponseInterpreter.InterpretResponse(login, r)
+      fetcherManager ! FetcherManger.GiveMeWork
     }
   }
 }
