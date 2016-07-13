@@ -1,6 +1,7 @@
 package net.zhenglai.sgcli.actors
 
-import akka.actor.{Props, Actor, ActorLogging}
+import akka.actor.SupervisorStrategy.{Restart, Stop}
+import akka.actor._
 import net.zhenglai.sgcli.actors.FetcherManger.{GiveMeWork, AddToQueue}
 
 /**
@@ -38,6 +39,13 @@ class FetcherManger(val token: Option[String],
 
   // start with empty queue
   override def receive = receiveWhileEmpty
+
+  override val supervisorStrategy = AllForOneStrategy() {
+    case _: ActorInitializationException => Stop
+    case _: ActorKilledException => Restart
+    case _: DeathPactException => Restart
+    case _: Exception => Restart
+  }
 
 
   def receiveWhileEmpty: Receive = {
