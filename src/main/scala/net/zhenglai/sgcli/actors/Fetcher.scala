@@ -1,11 +1,12 @@
 package net.zhenglai.sgcli.actors
 
 import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
+import akka.routing.RoundRobinPool
 import net.zhenglai.sgcli.util.Credentials
 
 import scala.concurrent.ExecutionContext.Implicits.global
-import scala.concurrent.duration._
 import scala.concurrent.Future
+import scala.concurrent.duration._
 import scalaj.http.Http
 
 /**
@@ -49,7 +50,7 @@ case class Fetcher(val token: Option[String]) extends Actor with ActorLogging {
   }
 }
 
-object FetcherTest extends App {
+object FetcherManualRoutingTest extends App {
 
   // import messages
   import Fetcher._
@@ -67,5 +68,26 @@ object FetcherTest extends App {
   fetchers(0) ! Fetch("scala")
   fetchers(0) ! Fetch("rkuhn")
 
-  system.scheduler.scheduleOnce(5 seconds) { system shutdown }
+  system.scheduler.scheduleOnce(5 seconds) {
+    system terminate
+  }
+}
+
+object FetcherAutoRoutingTest extends App {
+
+  import Fetcher._
+
+  val system = ActorSystem("FetcherAutoRoutingTest")
+  val token = Credentials.get("GHTOKEN")
+  val router = system.actorOf(
+    RoundRobinPool(4).props(Fetcher.props(token))
+  )
+
+  List("odersky", "zhenglaizhang", "junlaizhang", "rkuhn") foreach {
+    login => router ! Fetch(login)
+  }
+
+  system.scheduler.scheduleOnce(2 seconds) {
+    system terminate
+  }
 }
