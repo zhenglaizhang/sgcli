@@ -4,6 +4,7 @@ import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
 import net.zhenglai.sgcli.util.Credentials
 
 import scala.concurrent.ExecutionContext.Implicits.global
+import scala.concurrent.duration._
 import scala.concurrent.Future
 import scalaj.http.Http
 
@@ -66,6 +67,5 @@ object FetcherTest extends App {
   fetchers(0) ! Fetch("scala")
   fetchers(0) ! Fetch("rkuhn")
 
-  Thread.sleep(5000)
-  system.terminate()
+  system.scheduler.scheduleOnce(5 seconds) { system shutdown }
 }
