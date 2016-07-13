@@ -1,8 +1,13 @@
 package net.zhenglai.sgcli.actors
 
+import java.io.{File, FileWriter, BufferedWriter}
+
 import akka.actor.SupervisorStrategy.{Restart, Stop}
 import akka.actor._
 import net.zhenglai.sgcli.actors.FetcherManger.{GiveMeWork, AddToQueue}
+
+import scala.io.Source
+import scala.util.Try
 
 /**
   * Created by Zhenglai on 7/13/16.
@@ -17,6 +22,10 @@ object FetcherManger {
   // props factory
   def props(token: Option[String], numFetchers: Int) =
     Props(classOf[FetcherManger], token, numFetchers)
+
+  // properties, @TODO store in conf file
+  val fetchedUsersFileName = "fetched-users.txt"
+  val fetchQueueFileName = "fetch-queue.txt"
 }
 
 
@@ -47,6 +56,63 @@ class FetcherManger(val token: Option[String],
     case _: Exception => Restart
   }
 
+  def loadFetchedUsers = {
+    val fetchedUsersSource = Try {
+      Source.fromFile(FetcherManger.fetchedUsersFileName)
+    }
+
+    fetchedUsersSource foreach { s =>
+      try s.getLines foreach { l => fetchedUsers += l }
+      finally s.close
+    }
+  }
+
+  def loadFetchQueue = Try {
+    Try {
+      Source.fromFile(FetcherManger.fetchQueueFileName)
+    } foreach { s =>
+      try s.getLines.foreach { l => fetchQueue += l }
+      finally s.close
+    }
+  }
+
+  // load saved state
+  override def preStart: Unit = {
+    log.info("Running preStart on fetcher manager")
+    loadFetchedUsers
+    log.info(s"Read ${fetchedUsers.size} visited users from source")
+
+    loadFetchQueue
+    log.info(s"Read ${fetchQueue.size} users in queue from source")
+
+    if (fetchQueue.nonEmpty) {
+      context.become(receiveWhileNotEmpty)
+      fetchers foreach {
+        _ ! Fetcher.WorkAvailabie
+      }
+    }
+  }
+
+  def saveFetchedUsers = {
+    val writer = new BufferedWriter(
+      new FileWriter(new File(FetcherManger.fetchedUsersFileName))
+    )
+    fetchedUsers foreach { user => writer.write(user + "\n") }
+    writer.close
+  }
+
+  def saveFetchQueue = {
+    val writer = new BufferedWriter(new FileWriter(new File(FetcherManger.fetchQueueFileName)))
+    fetchQueue foreach { user => writer.write(user + "\n") }
+    writer.close
+  }
+
+  // dump current state
+  override def postStop: Unit = {
+    log.info("Running postStop on fetcher manager")
+    saveFetchedUsers
+    saveFetchQueue
+  }
 
   def receiveWhileEmpty: Receive = {
     case AddToQueue(login) =>
