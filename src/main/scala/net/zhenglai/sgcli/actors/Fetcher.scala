@@ -1,12 +1,9 @@
 package net.zhenglai.sgcli.actors
 
-import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
-import akka.routing.RoundRobinPool
-import net.zhenglai.sgcli.util.Credentials
+import akka.actor._
 
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
-import scala.concurrent.duration._
 import scalaj.http.Http
 
 /**
@@ -16,21 +13,22 @@ object Fetcher {
 
   case class Fetch(login: String)
 
-  def props(token: Option[String]): Props = Props(classOf[Fetcher], token)
+  def props(token: Option[String], responseInterpreter: ActorRef): Props = Props(classOf[Fetcher], token, responseInterpreter)
 
   def props(): Props = Props(classOf[Fetcher], None)
 
 }
 
-case class Fetcher(val token: Option[String]) extends Actor with ActorLogging {
+case class Fetcher(val token: Option[String],
+                   val responseInterpreter: ActorRef) extends Actor with ActorLogging {
 
   import Fetcher._
 
   override def receive: Receive = {
-    case Fetch(login) => fetchUrl(login)
+    case Fetch(login) => fetchFollowers(login)
   }
 
-  private def fetchUrl(login: String): Unit = {
+  private def fetchFollowers(login: String): Unit = {
     val unauthorizedRequest = Http(
       s"https://api.github.com/users/$login/followers"
     )
@@ -45,40 +43,46 @@ case class Fetcher(val token: Option[String]) extends Actor with ActorLogging {
       request asString
     }
     response.onComplete { r =>
-      log.info(s"Response from $login: $r")
+//      log.info(s"Response from $login: $r")
+      // signal no matter success or failure
+      responseInterpreter !
+        ResponseInterpreter.InterpretResponse(login, r)
     }
   }
 }
 
-object FetcherManualRoutingTest extends App {
+//object FetcherManualRoutingTest extends App {
+//
+//  // import messages
+//  import Fetcher._
+//
+//  val system = ActorSystem("FetcherTest")
+//
+//  val token = Credentials.get("GHTOKEN")
+//
+//  val fetchers = (0 to 3) map { i =>
+//    system.actorOf(Fetcher.props(token))
+//  }
+//
+//  fetchers(0) ! Fetch("odersky")
+//  fetchers(0) ! Fetch("zhenglaizhang")
+//  fetchers(0) ! Fetch("scala")
+//  fetchers(0) ! Fetch("rkuhn")
+//
+//  system.scheduler.scheduleOnce(5 seconds) {
+//    system terminate
+//  }
+//}
 
-  // import messages
-  import Fetcher._
-
-  val system = ActorSystem("FetcherTest")
-
-  val token = Credentials.get("GHTOKEN")
-
-  val fetchers = (0 to 3) map { i =>
-    system.actorOf(Fetcher.props(token))
-  }
-
-  fetchers(0) ! Fetch("odersky")
-  fetchers(0) ! Fetch("zhenglaizhang")
-  fetchers(0) ! Fetch("scala")
-  fetchers(0) ! Fetch("rkuhn")
-
-  system.scheduler.scheduleOnce(5 seconds) {
-    system terminate
-  }
-}
-
+/*
 object FetcherAutoRoutingTest extends App {
 
   import Fetcher._
 
   val system = ActorSystem("FetcherAutoRoutingTest")
+
   val token = Credentials.get("GHTOKEN")
+
   val router = system.actorOf(
     RoundRobinPool(4).props(Fetcher.props(token))
   )
@@ -91,3 +95,4 @@ object FetcherAutoRoutingTest extends App {
     system terminate
   }
 }
+*/
